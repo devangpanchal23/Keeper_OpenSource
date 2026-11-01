@@ -1,0 +1,138 @@
+name: CD — Verified Production Deployment
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build with production Vercel settings but do not publish
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: keeper-production
+  cancel-in-progress: false
+
+jobs:
+  ci-gate:
+    name: Production quality gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js 24 LTS
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint -- --max-warnings=262
+
+      - name: Type check
+        run: npm run type-check
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Audit design tokens
+        run: npm run audit:design
+
+      - name: Run regression suite
+        run: npm test
+
+      - name: Build production bundle
+        run: npm run build
+
+  deploy-production:
+    name: Deploy to Vercel production
+    needs: ci-gate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.deployment_url }}
+    outputs:
+      deployment_url: ${{ steps.deploy.outputs.deployment_url }}
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js 24 LTS
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Require Vercel project credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for key in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID VERCEL_AUTOMATION_BYPASS_SECRET; do
+            if [[ -z "${!key}" ]]; then missing+=("$key"); fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required GitHub Actions secrets: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull production settings and build deployment artifact
+        run: |
+          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          vercel build --prod --token="$VERCEL_TOKEN"
+
+      - name: Publish production deployment
+        id: deploy
+        if: env.DRY_RUN != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          deployment_url="$(vercel deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN")"
+          if [[ "$deployment_url" != https://* ]]; then
+            echo "Vercel did not return a valid HTTPS deployment URL." >&2
+            exit 1
+          fi
+          echo "deployment_url=$deployment_url" >> "$GITHUB_OUTPUT"
+          echo "Production deployment created: $deployment_url"
+
+      - name: Record dry-run result
+        if: env.DRY_RUN == 'true'
+        run: echo "Production settings build passed. No deployment was published."
+      - name: Smoke test deployed site and health endpoints
+        if: steps.deploy.outputs.deployment_url != ''
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.deployment_url }}
+        run: npm run smoke-test
+
+      - name: Roll back production if smoke checks fail
+        if: failure() && steps.deploy.outputs.deployment_url != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .vercel
+          vercel link --yes --project "$VERCEL_PROJECT_ID" --scope "$VERCEL_ORG_ID" --token="$VERCEL_TOKEN"
+          vercel rollback --token="$VERCEL_TOKEN"

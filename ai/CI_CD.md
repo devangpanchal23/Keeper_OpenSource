@@ -1,0 +1,43 @@
+# CI/CD Operations
+
+Last updated: 2026-10-21 10:44 IST
+
+Keeper uses GitHub Actions for validation and Vercel for production deployment.
+
+## Pull request and continuous integration
+
+`.github/workflows/ci.yml` runs on pull requests and pushes to `main` or `master`. Its gates are locked dependency installation, ESLint, TypeScript, production dependency audit, design audit, the regression harness, and a Next.js production build. Keep PR workflows secret-free so forked contributions cannot access production credentials.
+
+The test, lint, type-check, design-audit, and build gates do not receive application `.env` files or production secrets. Local `.env*` files are ignored by Git; automated tests use controlled fixtures and do not require provider credentials. The CI workflow publishes an always-run job summary listing each gate as `success`, `failure`, or `skipped`, so a skipped dependent build is distinguishable from a failed test.
+
+`.github/workflows/ai-worker.yml` invokes the durable media worker every five minutes with an authenticated `POST`; it avoids Hobby's one-cron-per-day restriction and does not rely on Vercel Cron's `GET` request. Configure the GitHub Actions variable `PRODUCTION_APP_URL` and secret `AI_WORKER_SECRET`; the same worker secret must be set in Vercel Production. GitHub scheduled workflows are best-effort and can be delayed, so choose Pro or a dedicated scheduler if job latency must be tightly controlled.
+
+## Production release
+
+`.github/workflows/deploy.yml` runs on pushes to `main` and manual dispatches from `main`. It repeats all quality gates, pulls the Vercel production settings, builds a Vercel prebuilt artifact, deploys that artifact, and checks the deployed URL's health endpoint, landing page, sign-in/sign-up pages, and import capabilities endpoint. The deployment is serialized so concurrent main pushes cannot race. A failed post-deploy smoke test requests rollback to the previous Vercel production deployment. Manual dry-run executes the production-settings build and does not publish.
+
+The workflow intentionally fails when Vercel credentials are missing. Add these secrets to GitHub Settings → Environments → `production`:
+
+- `VERCEL_TOKEN`
+- `VERCEL_ORG_ID`
+- `VERCEL_PROJECT_ID`
+
+Configure the `production` environment to allow deployments only from `main` and require a human reviewer. Configure a ruleset/branch protection policy for `main` to require pull requests, review approval, resolved conversations, and the CI checks **Lint, Type Check & Design Audit**, **Automated Tests**, **Dependency Security Audit**, and **Production Build Verification**. Do not allow force pushes or deletion of `main`.
+
+The workflow files cannot configure GitHub repository settings, environment reviewers, Vercel environment variables, or branch rules; a repository administrator must set these up. Vercel production runtime secrets (Supabase, billing/webhooks, AI/transcription, cron) must be configured in Vercel separately and are not copied into GitHub Actions. Keep production and preview credentials separate.
+
+## Dependency updates and current gate status
+
+Dependabot opens weekly npm and GitHub Actions update PRs. Review and merge updates through the same CI gates. Both workflows audit production dependencies because `eslint-config-next` currently brings in development-only `braces@3.0.3` via `fast-glob` and `micromatch`. GitHub Advisory Database marks that version high severity with no patched release, so a full-tree `npm audit --audit-level=high` may still fail even while the blocking production audit passes.
+
+On 2026-11-01, the CI/CD production dependency audit failure (`GHSA-mrwp-f3q8-3g9p` on `follow-redirects` via `razorpay` -> `axios`) was resolved by updating `follow-redirects` to safe patch version `1.16.2` in `package-lock.json`. Production audit passes with 0 vulnerabilities.
+
+On 2026-10-24, the Next.js `16.4.0` critical/high advisory failure was fixed by upgrading `next` and `eslint-config-next` to `16.4.3` and regenerating `package-lock.json`. The production audit passed locally with 0 vulnerabilities. Hosted GitHub Actions must confirm the build and remote gates after this change is pushed.
+
+The existing lint baseline has 262 warnings. Two Node helper scripts intentionally use CommonJS in this non-ESM package; their file-level ESLint exceptions resolve the 4 hard lint errors. CI enforces the current warning ceiling (`--max-warnings=262`) so warning debt cannot grow unnoticed. `tsx` is pinned in `package-lock.json` and the npm scripts invoke that local binary. Reduce lint warnings as follow-up maintenance; do not disable or mark these jobs successful to force a release.
+
+## Operational limitations
+
+- Smoke tests verify basic HTTP availability and response shape, not Supabase database readiness, authenticated user journeys, payment processing, or AI worker completion. Add deeper synthetic checks only with dedicated non-production test accounts and secrets.
+- Automatic rollback uses Vercel's rollback-to-previous-production behavior. Confirm the Vercel plan/project supports the desired rollback history and configure runtime observability and alerting in Vercel.
+- Production secrets and deployment controls were not available from the development workspace, so live deployment, rollback, and external service readiness have not been verified.

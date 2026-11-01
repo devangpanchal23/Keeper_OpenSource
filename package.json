@@ -1,0 +1,45 @@
+{
+  "name": "recall-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "type-check": "tsc --noEmit",
+    "test": "node --import tsx scripts/run-tests.ts",
+    "smoke-test": "node --import tsx scripts/smoke-test.ts",
+    "audit:design": "node --import tsx scripts/palette-audit.ts"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.118.0",
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
+    "canvas-confetti": "^1.9.4",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.61.0",
+    "mongodb": "^7.7.0",
+    "next": "16.4.3",
+    "pg": "^8.23.1",
+    "razorpay": "^2.9.8",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "source-map-js": "1.2.2",
+    "tailwind-merge": "^3.7.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/canvas-confetti": "^1.9.0",
+    "@types/node": "^26",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.4.3",
+    "tailwindcss": "^4",
+    "tsx": "4.23.15",
+    "typescript": "^5"
+  }
+}
