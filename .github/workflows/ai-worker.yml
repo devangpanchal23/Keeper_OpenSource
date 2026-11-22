@@ -58,12 +58,18 @@ jobs:
             headers+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
           fi
 
+          curl_exit=0
           http_status="$(curl --silent --show-error --max-time 280 \
             --retry 2 --retry-delay 5 --retry-connrefused \
             "${headers[@]}" \
             --output "$response_file" --write-out '%{http_code}' \
             --request POST \
-            "${PRODUCTION_APP_URL%/}/api/ai/worker?batch=3&concurrency=3")"
+            "${PRODUCTION_APP_URL%/}/api/ai/worker?batch=3&concurrency=3")" || curl_exit=$?
+
+          if [[ "$curl_exit" -ne 0 ]]; then
+            echo "::error::HTTP 000 Network/DNS Error (curl exit $curl_exit): curl could not connect to $PRODUCTION_APP_URL. Check DNS, SSL certificates, or domain reachability." >&2
+            exit 1
+          fi
 
           cat "$response_file"
           echo
@@ -80,8 +86,8 @@ jobs:
               503)
                 echo "::error::HTTP 503 Service Unavailable: The deployed application cannot connect to Supabase/database or the keeper_claim_ai_job RPC failed." >&2
                 ;;
-              000)
-                echo "::error::HTTP 000 Network/DNS Error: curl could not connect to $PRODUCTION_APP_URL. Check DNS, SSL certificates, or domain reachability." >&2
+              *)
+                echo "::error::Unexpected HTTP error $http_status from AI worker." >&2
                 ;;
             esac
             exit 1
