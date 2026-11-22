@@ -375,3 +375,25 @@ This branch (`open_source_keeper`) provides Keeper as a completely free, self-ho
 - **No Artificial Quotas**: Unlimited bookmark saving, bulk importing, transcription, and AI assistance.
 - **Full Capabilities**: Multi-platform ingestion (YouTube, Instagram, Reddit, X, web), AI summaries, auto-tagging, search, collections, and multi-device sync are completely operational.
 
+---
+
+## 🛠️ Contributing & Local Verification
+
+Before opening a pull request, verify that all quality gates pass locally:
+
+```bash
+# 1. Install locked dependencies
+npm ci
+
+# 2. Run quality gates
+npm run lint         # ESLint checks
+npm run type-check   # TypeScript strict validation
+npm run audit:design # 60:30:10 palette token audit
+npm test             # Unit & regression tests (fully offline)
+npm run build        # Next.js production bundle build
+```
+
+> [!NOTE]
+> **Deployment Policy:** This is the public open-source edition of Keeper. Automated production deployments (e.g. to Vercel) and scheduled background cron jobs are intentionally omitted from GitHub Actions. All CI workflows operate strictly secret-free, ensuring that community forks and pull requests pass cleanly out of the box. Reference workflow templates for self-hosted cron triggers and Vercel deployments can be found in `docs/examples/`.
+
+
