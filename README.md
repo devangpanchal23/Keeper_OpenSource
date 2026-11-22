@@ -8,24 +8,11 @@ This branch (`open_source_keeper`) is the **Free Open-Source Edition** of Keeper
 
 ---
 
-## 📚 Technical Audit & Open-Source Documentation
+## 📚 Documentation & Community Guidelines
 
-Comprehensive technical, architecture, and security reports are available in the repository root:
-
-- [**OPEN_SOURCE_AUDIT.md**](OPEN_SOURCE_AUDIT.md) — Comprehensive technical architecture, repository health, and performance audit.
-- [**OPEN_SOURCE_FEATURE_MATRIX.md**](OPEN_SOURCE_FEATURE_MATRIX.md) — Feature-by-feature operational status across all 13 core functional areas.
-- [**OPEN_SOURCE_SECURITY_AUDIT.md**](OPEN_SOURCE_SECURITY_AUDIT.md) — OWASP Top 10 evaluation, HMAC token security, and multi-tenant isolation audit.
-- [**OPEN_SOURCE_IMPLEMENTATION_PLAN.md**](OPEN_SOURCE_IMPLEMENTATION_PLAN.md) — Prioritized remediation roadmap and invariant safety.
-- [**OPEN_SOURCE_RELEASE_CHECKLIST.md**](OPEN_SOURCE_RELEASE_CHECKLIST.md) — Verification gate signoff and pre-release checklist.
 - [**CONTRIBUTING.md**](CONTRIBUTING.md) — Community contribution guidelines and development workflow.
 - [**SECURITY.md**](SECURITY.md) — Vulnerability reporting policy and responsible disclosure.
-
-Phase 1 security and persistence references:
-
-- [**ai/SECURITY_BASELINE.md**](ai/SECURITY_BASELINE.md) — Session signing and live-test safety baseline.
-- [**ai/PERSISTENCE_ARCHITECTURE.md**](ai/PERSISTENCE_ARCHITECTURE.md) — Current data flows, ownership rules, and known sync limitations.
-- [**ai/DATABASE_PROVIDER_MATRIX.md**](ai/DATABASE_PROVIDER_MATRIX.md) — Source-level provider capability comparison and parity limits.
-- [**ai/TESTING_GUIDE.md**](ai/TESTING_GUIDE.md) — Isolated default validation and explicit Supabase integration setup.
+- [**LICENSE**](LICENSE) — MIT License.
 
 ---
 
