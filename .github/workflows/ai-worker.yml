@@ -16,46 +16,73 @@ concurrency:
 jobs:
   process-queued-jobs:
     name: Process queued AI jobs
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Require production worker configuration
         env:
-          PRODUCTION_APP_URL: ${{ vars.PRODUCTION_APP_URL }}
-          AI_WORKER_SECRET: ${{ secrets.AI_WORKER_SECRET }}
+          PRODUCTION_APP_URL: ${{ vars.PRODUCTION_APP_URL || secrets.PRODUCTION_APP_URL }}
+          AI_WORKER_SECRET: ${{ secrets.AI_WORKER_SECRET || secrets.CRON_SECRET }}
         shell: bash
         run: |
           set -euo pipefail
           if [[ -z "$PRODUCTION_APP_URL" ]]; then
-            echo "Set the PRODUCTION_APP_URL Actions variable to the deployed HTTPS app URL." >&2
+            echo "::error::PRODUCTION_APP_URL is not set. Configure it in GitHub Repository Settings -> Secrets and variables -> Actions (as a Variable or Secret) to your deployed HTTPS URL." >&2
             exit 1
           fi
           if [[ "$PRODUCTION_APP_URL" != https://* ]]; then
-            echo "PRODUCTION_APP_URL must use HTTPS." >&2
+            echo "::error::PRODUCTION_APP_URL must start with https:// (got: $PRODUCTION_APP_URL)" >&2
             exit 1
           fi
           if [[ -z "$AI_WORKER_SECRET" ]]; then
-            echo "Set the AI_WORKER_SECRET Actions secret to the same value configured in Vercel." >&2
+            echo "::error::AI_WORKER_SECRET is not set. Configure it in GitHub Repository Settings -> Secrets and variables -> Actions -> Secrets to match AI_WORKER_SECRET in Vercel." >&2
             exit 1
           fi
 
       - name: Invoke authenticated worker batch
         env:
-          PRODUCTION_APP_URL: ${{ vars.PRODUCTION_APP_URL }}
-          AI_WORKER_SECRET: ${{ secrets.AI_WORKER_SECRET }}
+          PRODUCTION_APP_URL: ${{ vars.PRODUCTION_APP_URL || secrets.PRODUCTION_APP_URL }}
+          AI_WORKER_SECRET: ${{ secrets.AI_WORKER_SECRET || secrets.CRON_SECRET }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         shell: bash
         run: |
           set -euo pipefail
           response_file="$(mktemp)"
           trap 'rm -f "$response_file"' EXIT
+
+          headers=(
+            -H "Authorization: Bearer $AI_WORKER_SECRET"
+          )
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+            headers+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+          fi
+
           http_status="$(curl --silent --show-error --max-time 280 \
+            --retry 2 --retry-delay 5 --retry-connrefused \
+            "${headers[@]}" \
             --output "$response_file" --write-out '%{http_code}' \
             --request POST \
-            --header "Authorization: Bearer $AI_WORKER_SECRET" \
             "${PRODUCTION_APP_URL%/}/api/ai/worker?batch=3&concurrency=3")"
+
           cat "$response_file"
+          echo
+
           if [[ "$http_status" != 2* ]]; then
-            echo "AI worker returned HTTP $http_status." >&2
+            echo "::error::AI worker endpoint returned HTTP $http_status." >&2
+            case "$http_status" in
+              401)
+                echo "::error::HTTP 401 Unauthorized: Verify that AI_WORKER_SECRET in GitHub Actions Secrets exactly matches the AI_WORKER_SECRET configured in Vercel environment variables." >&2
+                ;;
+              404)
+                echo "::error::HTTP 404 Not Found: Verify that PRODUCTION_APP_URL points to the deployed Keeper domain and that /api/ai/worker route exists." >&2
+                ;;
+              503)
+                echo "::error::HTTP 503 Service Unavailable: The deployed application cannot connect to Supabase/database or the keeper_claim_ai_job RPC failed." >&2
+                ;;
+              000)
+                echo "::error::HTTP 000 Network/DNS Error: curl could not connect to $PRODUCTION_APP_URL. Check DNS, SSL certificates, or domain reachability." >&2
+                ;;
+            esac
             exit 1
           fi
